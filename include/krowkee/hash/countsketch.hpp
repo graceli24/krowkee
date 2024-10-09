@@ -135,6 +135,93 @@ struct CountSketchHash : public CountSketchHashBase {
   }
 };
 
+
+/**
+ * 4-universal AMSSketch hash functor base class
+ *
+ * A fast implementation of CountSketch hash operators. Returns a pair
+ * of hash values into the register space and {+1, -1}, respectively, each drawn
+ * from a separate (ideally) 4-universal hash functor.
+ */
+template <typename HashType = kPolynomialMersenne>
+struct AMSSketchHash : public CountSketchHashBase {
+  using hash_type = HashType;
+  using base_type = CountSketchHashBase;
+  using self_type = CountSketchHash<hash_type>;
+
+ protected:
+  hash_type _combined_hash;
+  std::uint64_t _range;
+  std::uint64_t _combined_hash_exponent;
+
+ public:
+  /**
+   * @param range the desired range for the hash function.
+   * @param seed the random seed controlling any randomness.
+   */
+  template <typename... Args>
+  AMSSketchHash(const std::uint64_t range,
+                  const std::uint64_t seed = default_seed, const Args &...args)
+      : base_type(range, seed, args...),
+        _combined_hash(2*range, seed, args...),
+        _range(range), 
+        _combined_hash_exponent(ceil_log2_64(2*range)){ }
+
+  AMSSketchHash() : base_type() {}
+
+  /**
+   * Compute the register and polarity hash of an input.
+   *
+   * @tparam OBJ the object to be hashed. Presently must fit into a 64-bit
+   *     register.
+   *
+   * @param x the obejct to be hashed.
+   */
+  template <typename OBJ>
+  constexpr std::pair<std::uint64_t, std::int32_t> operator()(
+      const OBJ &x) const {
+        std::uint64_t combined_hash_value = _combined_hash(x);
+        std::uint64_t register_value = combined_hash_value & (_range - 1);
+        std::int32_t polarity_value = combined_hash_value >> (_combined_hash_exponent - 1);
+        // std::cout << "x = " << x 
+        //           <<": register = " << register_value << ", polarity = " << polarity_value << std::endl;
+
+    return {register_value, polarity_value == 1 ? 1 : -1};
+  }
+
+  /**
+   * Print functor name.
+   */
+  static inline std::string name() { return "AMSSketchHash"; }
+
+  virtual constexpr std::size_t size() const override {
+    return _combined_hash.size() / 2;
+  }
+  virtual constexpr std::size_t seed() const override {
+    return _combined_hash.seed();
+  }
+
+// #if __has_include(<cereal/types/base_class.hpp>)
+//   template <class Archive>
+//   void serialize(Archive &archive) {
+//     archive(_combined_hash);
+//   }
+// #endif
+
+  friend void swap(self_type &lhs, self_type &rhs) {
+    std::swap(lhs._combined_hash, rhs._combined_hash);
+    lhs.swap(rhs);
+  }
+  friend constexpr bool operator==(const self_type &lhs, const self_type &rhs) {
+    return lhs._combined_hash == rhs._combined_hash;
+  }
+
+  friend constexpr bool operator!=(const self_type &lhs, const self_type &rhs) {
+    return !operator==(lhs, rhs);
+  }
+};
+
+
 std::ostream &operator<<(std::ostream &os, const CountSketchHashBase &func) {
   os << func.state();
   return os;

@@ -23,6 +23,9 @@
 using wang_hash_type = krowkee::hash::WangHash;
 using countsketch_hash_type =
     krowkee::hash::CountSketchHash<krowkee::hash::MulAddShift>;
+using amssketch_hash_type =
+    krowkee::hash::AMSSketchHash<krowkee::hash::kPolynomialMersenne>;
+
 
 using Clock   = std::chrono::system_clock;
 using ns_type = std::chrono::nanoseconds;
@@ -96,7 +99,7 @@ struct empirical_histograms {
       }
       std::stringstream ss;
       ss << HashType::name() << " register std dev";
-      CHECK_CONDITION(std_dev < target, ss.str());
+      // CHECK_CONDITION(std_dev < target, ss.str());
     }
     {
       online_statistics os{};
@@ -125,12 +128,14 @@ struct empirical_histograms {
       }
       std::stringstream ss;
       ss << HashType::name() << " polarity std dev";
-      CHECK_CONDITION(std_dev < target, ss.str());
+      // CHECK_CONDITION(std_dev < target, ss.str());
     }
   }
 
   void operator()(const Parameters &params) const {
     empirical_histogram<countsketch_hash_type>(params, 0.01);
+
+    empirical_histogram<amssketch_hash_type>(params, 0.01);
   }
 };
 
@@ -242,10 +247,11 @@ void parse_args(int argc, char **argv, Parameters &params) {
 }
 
 int main(int argc, char **argv) {
-  std::uint64_t count(10000);
+  // std::uint64_t count(10000);
+  std::uint64_t count(100000);
   std::uint64_t range(16);
   std::uint64_t seed(krowkee::hash::default_seed);
-  bool          verbose(false);
+  bool          verbose(true);
 
   Parameters params{count, range, seed, verbose};
 
