@@ -15,8 +15,14 @@
 #include <cstdint>
 #include <random>
 
+#include <boost/multiprecision/cpp_int.hpp>
+#include <boost/random.hpp>
+
 namespace krowkee {
 namespace hash {
+
+using uint128_t = boost::multiprecision::uint128_t;
+
 /**
  * Hash functor base class
  *
@@ -300,9 +306,273 @@ struct MulAddShift : public Base {
   std::uint64_t _b;
 };
 
+
+
+/**
+ * Polynomial hash with a Mersenne prime to generate k-universal hash functions
+ *
+ * Algorithm 1 from: https://arxiv.org/abs/2008.08654
+ */
+struct kPolynomialMersenne : public Base {
+  /**
+   * 
+   * Calculate h(x) = ([\sum_{i=0}^{k-1} a_i x^i] mod prime) mod range
+   *
+   * Initialize the polynomial coefficients a_i = `_coefficients[i]` 
+   * given the specified random `seed`.
+   * Coefficients are randomly sampled from [0, prime].
+   *
+   * @tparam ARGS types of additional (ignored) hash functor arguments.
+   *
+   * @param range: the power of 2 range for the hash function.
+   * @param seed: the random seed.
+   * @param k: the k universality of the family of hash functions. If unspecified,
+               the default is k = 4
+   * @param mersenne_power: the power for the mersenne prime (2^mersenne_power - 1) 
+            we use for the prime mod.
+   */
+  template <typename... ARGS>
+  kPolynomialMersenne(const std::uint64_t range,
+                       const std::uint64_t seed = default_seed, 
+                       const std::uint16_t k = 4,
+                       const std::uint16_t mersenne_power = 89,
+                       const ARGS &...)
+      : Base(range, seed) {
+
+    _k = k;
+    _mersenne_power = mersenne_power;
+    uint128_t base = 2;
+    _prime = boost::multiprecision::pow(base, mersenne_power) - 1;
+
+    boost::random::mt19937_64                             rnd_gen(wang64(_seed));
+    boost::random::uniform_int_distribution<uint128_t>    udist(0, _prime);
+    
+    std::vector<uint128_t> coefficients (k, 0);
+    for (uint16_t i = 0; i < k; i++){
+      coefficients[i] = udist(rnd_gen);
+    }
+    _coefficients = coefficients;
+  }
+
+  kPolynomialMersenne() : Base() {}
+
+  /**
+   * Compute ([\sum_{i=0}^{k-1} a[i] x^i] mod prime) mod range
+   * Algorithm 1 in https://arxiv.org/abs/2008.08654 
+   *
+   * @tparam OBJ the object to be hashed. Presently must fit into a 64-bit
+   *     register.
+   *
+   * @param x the object to be hashed.
+   */
+  template <typename OBJ>
+  constexpr std::uint64_t operator()(const OBJ &x) const {
+
+    //Evaluate the polynomial mod p
+    uint128_t y = _coefficients[_k-1];
+    for (int i = _k - 2; i >= 0; i--){
+      y = y * x + _coefficients[i];
+      y = (y & _prime) + (y >> _mersenne_power); //calculate y mod prime
+    }
+
+    //Make sure y is in [0, prime - 1]
+    while (y >= _prime){
+      y = y - _prime;
+    }
+
+    //Return y mod range, where we assume range = 2^\ell
+    uint64_t range = std::pow(2,(64 - _m)); //from base class
+    y = y & (range - 1);
+
+    return static_cast<uint64_t>(y);
+
+  }
+
+  /**
+   * Print functor name.
+   */
+  static inline std::string name() { return "kPolynomialMersenne"; }
+
+  inline std::string state() const {
+    std::stringstream ss;
+    ss << Base::state() << ", coefficients ((k-1)th power to constant): "; 
+    for (int i = _k - 1; i >= 0; i--){
+      ss << _coefficients[i] << " ";
+    }
+    return ss.str();
+  }
+
+  friend void swap(kPolynomialMersenne &lhs, kPolynomialMersenne &rhs) {
+    std::swap(lhs._k, rhs._k);
+    std::swap(lhs._mersenne_power, rhs._mersenne_power);
+    std::swap(lhs._prime, rhs._prime);
+    std::swap(lhs._coefficients, rhs._coefficients);
+    lhs.swap(rhs);
+  }
+
+  friend constexpr bool operator==(const kPolynomialMersenne &lhs,
+                                   const kPolynomialMersenne &rhs) {
+    return lhs._m == rhs._m && lhs._seed == rhs._seed && lhs._k == rhs._k &&
+           lhs._mersenne_power == rhs._mersenne_power &&
+           lhs._prime == rhs._prime &&
+           lhs._coefficients == rhs._coefficients;
+  }
+
+  friend constexpr bool operator!=(const kPolynomialMersenne &lhs,
+                                   const kPolynomialMersenne &rhs) {
+    return !operator==(lhs, rhs);
+  }
+
+#if __has_include(<cereal/types/base_class.hpp>)
+  template <class Archive>
+  void serialize(Archive &archive) {
+    archive(cereal::base_class<Base>(this), _k, _mersenne_power, _prime, _coefficients);
+  }
+#endif
+
+ private:
+  std::uint16_t _k;
+  std::uint16_t _mersenne_power;
+  uint128_t _prime;
+  std::vector<uint128_t> _coefficients;
+};
+
+
+/**
+ * Polynomial hash with a Mersenne prime to generate k-universal hash functions
+ * Uses uint64's only and supports inputs in the range [0, 2^31 - 1]
+ * Algorithm 1 from: https://arxiv.org/abs/2008.08654
+ */
+struct kPolynomialMersenne_uint64 : public Base {
+  /**
+   * 
+   * Calculate h(x) = ([\sum_{i=0}^{k-1} a_i x^i] mod prime) mod range
+   *
+   * Initialize the polynomial coefficients a_i = `_coefficients[i]` 
+   * given the specified random `seed`.
+   * Coefficients are randomly sampled from [0, prime].
+   *
+   * @tparam ARGS types of additional (ignored) hash functor arguments.
+   *
+   * @param range: the power of 2 range for the hash function.
+   * @param seed: the random seed.
+   * @param k: the k universality of the family of hash functions. If unspecified,
+               the default is k = 4
+   * @param mersenne_power: the power for the mersenne prime (2^mersenne_power - 1) 
+            we use for the prime mod.
+   */
+  template <typename... ARGS>
+  kPolynomialMersenne_uint64(const std::uint64_t range,
+                             const std::uint64_t seed = default_seed, 
+                             const std::uint16_t k = 4,
+                             const std::uint16_t mersenne_power = 31,
+                             const ARGS &...)
+      : Base(range, seed) {
+
+    _k = k;
+    _mersenne_power = mersenne_power;
+    _prime = std::pow(2,mersenne_power) - 1;
+    
+    std::mt19937_64                              rnd_gen(wang64(_seed));
+    std::uniform_int_distribution<std::uint64_t> udist(0, _prime);
+
+    std::vector<uint64_t> coefficients (k, 0);
+    for (uint16_t i = 0; i < k; i++){
+      coefficients[i] = udist(rnd_gen);
+    }
+    _coefficients = coefficients;
+
+  }
+
+  kPolynomialMersenne_uint64() : Base() {}
+
+  /**
+   * Compute ([\sum_{i=0}^{k-1} a[i] x^i] mod prime) mod range
+   * Algorithm 1 in https://arxiv.org/abs/2008.08654 
+   *
+   * @tparam OBJ the object to be hashed. Presently must fit into a 64-bit
+   *     register.
+   *
+   * @param x the object to be hashed.
+   */
+  template <typename OBJ>
+  constexpr std::uint64_t operator()(const OBJ &x) const {
+
+    //Evaluate the polynomial mod p
+    std::uint64_t y = _coefficients[_k-1];
+    for (int i = _k - 2; i >= 0; i--){
+      y = y * x + _coefficients[i];
+      y = (y & _prime) + (y >> _mersenne_power); //calculate y mod prime
+    }
+
+    //Make sure y is in [0, prime - 1]
+    while (y >= _prime){
+      y = y - _prime;
+    }
+
+    //Return y mod range, where we assume range = 2^\ell
+    uint64_t range = std::pow(2,(64 - _m)); //from base class
+    y = y & (range - 1);
+
+    return y;
+
+    // return truncate(_a * x + _b);
+  }
+
+  /**
+   * Print functor name.
+   */
+  static inline std::string name() { return "kPolynomialMersenne_uint64"; }
+
+  inline std::string state() const {
+    std::stringstream ss;
+    ss << Base::state() << ", coefficients ((k-1)th power to constant): "; 
+    for (int i = _k - 1; i >= 0; i--){
+      ss << _coefficients[i] << " ";
+    }
+    return ss.str();
+  }
+
+  friend void swap(kPolynomialMersenne_uint64 &lhs, kPolynomialMersenne_uint64 &rhs) {
+    std::swap(lhs._k, rhs._k);
+    std::swap(lhs._mersenne_power, rhs._mersenne_power);
+    std::swap(lhs._prime, rhs._prime);
+    std::swap(lhs._coefficients, rhs._coefficients);
+    lhs.swap(rhs);
+  }
+
+  friend constexpr bool operator==(const kPolynomialMersenne_uint64 &lhs,
+                                   const kPolynomialMersenne_uint64 &rhs) {
+    return lhs._m == rhs._m && lhs._seed == rhs._seed && lhs._k == rhs._k &&
+           lhs._mersenne_power == rhs._mersenne_power &&
+           lhs._prime == rhs._prime &&
+           lhs._coefficients == rhs._coefficients;
+  }
+
+  friend constexpr bool operator!=(const kPolynomialMersenne_uint64 &lhs,
+                                   const kPolynomialMersenne_uint64 &rhs) {
+    return !operator==(lhs, rhs);
+  }
+
+#if __has_include(<cereal/types/base_class.hpp>)
+  template <class Archive>
+  void serialize(Archive &archive) {
+    archive(cereal::base_class<Base>(this), _k, _mersenne_power, _prime, _coefficients);
+  }
+#endif
+
+ private:
+  std::uint16_t _k;
+  std::uint64_t _mersenne_power;
+  std::uint64_t _prime;
+  std::vector<uint64_t> _coefficients;
+};
+
+
 std::ostream &operator<<(std::ostream &os, const Base &func) {
   os << func.state();
   return os;
 }
+
 }  // namespace hash
 }  // namespace krowkee
