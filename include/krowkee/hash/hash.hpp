@@ -20,16 +20,15 @@
 #include <boost/random.hpp>
 
 
-
 //Serialization for boost uint128
-
 #ifndef CEREAL_TYPES_BOOST_UINT128_
 #define CEREAL_TYPES_BOOST_UINT128_
 
-// namespace boost::multiprecision{
 namespace cereal{
 
 using uint128_t = boost::multiprecision::uint128_t;
+
+//Documentation on custom cereal serialization functions: https://uscilab.github.io/cereal/serialization_functions.html
 
 template<class Archive> inline
 void save(Archive & archive, uint128_t const & x){ 
@@ -54,6 +53,9 @@ void load(Archive & archive, uint128_t & x){
   x = (static_cast<uint128_t> (leading_bits) << 64) + (static_cast<uint128_t> (ending_bits));
 
 }
+
+//cereal no longer has any ambiguity about which functions to use for serializing boost::multiprecision::uint128_t
+//See: https://github.com/USCiLab/cereal/blob/master/include/cereal/specialize.hpp
 
 template <class Archive> 
 struct specialize<Archive, boost::multiprecision::uint128_t, cereal::specialization::non_member_load_save> {};
