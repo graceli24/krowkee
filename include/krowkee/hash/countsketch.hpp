@@ -181,12 +181,9 @@ struct AMSSketchHash : public CountSketchHashBase {
   constexpr std::pair<std::uint64_t, std::int32_t> operator()(
       const OBJ &x) const {
         std::uint64_t combined_hash_value = _combined_hash(x);
-        std::uint64_t register_value = combined_hash_value & (_range - 1);
-        std::int32_t polarity_value = combined_hash_value >> (_combined_hash_exponent - 1);
-        // std::cout << "x = " << x 
-        //           <<": register = " << register_value << ", polarity = " << polarity_value << std::endl;
-
-    return {register_value, polarity_value == 1 ? 1 : -1};
+        std::uint64_t register_value = combined_hash_value & (_range - 1); //most significant `range` bits are for the register
+        std::int32_t polarity_value = combined_hash_value >> (_combined_hash_exponent - 1); //remaining least significant bit is for the polarity
+        return {register_value, polarity_value == 1 ? 1 : -1};
   }
 
   /**

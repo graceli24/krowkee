@@ -31,6 +31,7 @@ bool ss_archive_test(const T &obj1) {
     IArchiveType iarchive(is);
     iarchive(obj2);
   }
+
   return obj1 == obj2;
 }
 

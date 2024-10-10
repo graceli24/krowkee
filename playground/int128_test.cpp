@@ -8,7 +8,7 @@
 int main(int argc, char** argv) {
 
     //Test uint128_t
-    typedef boost::multiprecision::uint128_t uint128_t;
+    using uint128_t = boost::multiprecision::uint128_t;
 
     uint128_t base = 2;
     uint128_t prime = boost::multiprecision::pow(base,89) - 1;
@@ -44,13 +44,34 @@ int main(int argc, char** argv) {
     boost::random::uniform_int_distribution<uint128_t> udist(0, prime);
     // std::uniform_int_distribution<std::uint64_t> udist(0, prime);
     std::cout << "Generating uniformly random numbers" << std::endl;
-    std::uint16_t k = 16;
+    std::uint16_t k = 5;
     std::vector<uint128_t> coefficients (k, 0);
     for(uint16_t i = 0; i < k; ++i){
         uint128_t coefficient = udist(rnd_gen);
         coefficients[i] = coefficient;
         std::cout << coefficients[i] << std::endl;
     }
+
+    //Test spliting a uint128 into 2 uint64's and recombining
+    uint128_t x = boost::multiprecision::pow(base,89) - 1;
+
+    std::cout << std::endl << "Full uint128 number = " << x << std::endl;
+
+    uint128_t leading_bits128 = x >> 64;
+    std::uint64_t limit64 = 18446744073709551615;
+    uint128_t ending_bits128 = x & (static_cast<uint128_t> (limit64));
+
+    std:: cout << std::endl << "uint128 leading = " << leading_bits128 << ", and ending = " << ending_bits128 << std::endl;
+
+    std::uint64_t leading_bits = static_cast<std::uint64_t> (leading_bits128);
+    std::uint64_t ending_bits =  static_cast<std::uint64_t> (ending_bits128);
+
+    std:: cout << "uint64 leading = " << leading_bits << " and ending = " << ending_bits << std::endl;
+
+    uint128_t y = (static_cast<uint128_t> (leading_bits) << 64) + (static_cast<uint128_t> (ending_bits));
+
+    std::cout << std::endl << "Recombined uint128 number = " << y << std::endl;
+
 
     return 0;
 }

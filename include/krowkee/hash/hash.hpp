@@ -10,6 +10,7 @@
 
 #if __has_include(<cereal/types/base_class.hpp>)
 #include <cereal/types/base_class.hpp>
+#include <cereal/access.hpp>
 #endif
 
 #include <cstdint>
@@ -18,8 +19,54 @@
 #include <boost/multiprecision/cpp_int.hpp>
 #include <boost/random.hpp>
 
+
+
+//Serialization for boost uint128
+
+#ifndef CEREAL_TYPES_BOOST_UINT128_
+#define CEREAL_TYPES_BOOST_UINT128_
+
+// namespace boost::multiprecision{
+namespace cereal{
+
+using uint128_t = boost::multiprecision::uint128_t;
+
+template<class Archive> inline
+void save(Archive & archive, uint128_t const & x){ 
+
+  uint128_t leading_bits128 = x >> 64;
+  uint128_t limit64 = 18446744073709551615U;
+  uint128_t ending_bits128 = x & limit64;
+
+  std::uint64_t leading_bits = static_cast<std::uint64_t> (leading_bits128);
+  std::uint64_t ending_bits =  static_cast<std::uint64_t> (ending_bits128);
+
+  archive(leading_bits, ending_bits); 
+
+}
+
+template<class Archive> inline
+void load(Archive & archive, uint128_t & x){
+
+  std::uint64_t leading_bits;
+  std::uint64_t ending_bits;
+  archive(leading_bits, ending_bits); 
+  x = (static_cast<uint128_t> (leading_bits) << 64) + (static_cast<uint128_t> (ending_bits));
+
+}
+
+template <class Archive> 
+struct specialize<Archive, boost::multiprecision::uint128_t, cereal::specialization::non_member_load_save> {};
+//cereal no longer has any ambiguity about which functions to use for serializing boost::multiprecision::uint128_t
+
+}
+// }
+#endif //CEREAL_TYPES_BOOST_UINT128_
+
+
 namespace krowkee {
 namespace hash {
+
 
 using uint128_t = boost::multiprecision::uint128_t;
 

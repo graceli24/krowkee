@@ -175,6 +175,9 @@ struct serialize_check {
     serialize<wang_hash_type>(params);
     serialize<mul_shift_type>(params);
     serialize<mul_add_shift_type>(params);
+
+    serialize<kpoly_type>(params);
+    serialize<kpoly_uint64_type>(params);
   }
 };
 #endif
@@ -191,9 +194,9 @@ void do_experiment(const Parameters params) {
   do_test<pow2_check>(params);
   do_test<init_check>();
   do_test<empirical_histograms>(params);
-// #if __has_include(<cereal/cereal.hpp>)
-//   do_test<serialize_check>(params);
-// #endif
+#if __has_include(<cereal/cereal.hpp>)
+  do_test<serialize_check>(params);
+#endif
   std::cout << std::endl;
 }
 
